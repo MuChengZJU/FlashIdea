@@ -19,45 +19,40 @@ mod sync;
 pub fn run() {
     let env_path = load_env_file();
 
-    let configured_db_path = env::var("FLASHIDEA_DB_PATH").ok();
-    let db_path = resolve_db_path(configured_db_path.as_deref(), env_path.as_deref())
-        .expect("failed to resolve sqlite database path");
-    if let Some(parent) = db_path.parent() {
-        fs::create_dir_all(parent).expect("failed to create sqlite database directory");
-    }
-    let db_path = db_path.to_string_lossy().into_owned();
-    let doc_id = env::var("FEISHU_DOC_ID").unwrap_or_default();
-    let conn = db::init_db(&db_path).expect("failed to initialize sqlite database");
-    let (app_id, app_secret, wiki_node_token) = load_credentials(&conn);
-
-    eprintln!(
-        "FEISHU_APP_ID prefix: {}",
-        app_id.chars().take(6).collect::<String>()
-    );
-    eprintln!(
-        "FEISHU_WIKI_NODE_TOKEN set: {}",
-        wiki_node_token.is_some()
-    );
-
-    let feishu_client = Arc::new(FeishuClient::new(app_id, app_secret));
-
-    let state = AppState {
-        db: Arc::new(Mutex::new(conn)),
-        feishu_client: Arc::new(RwLock::new(feishu_client)),
-        doc_id: Arc::new(RwLock::new(doc_id)),
-        wiki: Arc::new(RwLock::new(None)),
-    };
-
     tauri::Builder::default()
-        .manage(state)
         .setup(move |app| {
+            let db_path = resolve_db_path_for_app(app, env_path.as_deref())?;
+            let db_path_str = db_path.to_string_lossy().into_owned();
+            let doc_id = env::var("FEISHU_DOC_ID").unwrap_or_default();
+            let conn = db::init_db(&db_path_str)
+                .map_err(|e| format!("failed to initialize sqlite database: {e}"))?;
+            let (app_id, app_secret, wiki_node_token) = load_credentials(&conn);
+
+            eprintln!(
+                "FEISHU_APP_ID prefix: {}",
+                app_id.chars().take(6).collect::<String>()
+            );
+            eprintln!(
+                "FEISHU_WIKI_NODE_TOKEN set: {}",
+                wiki_node_token.is_some()
+            );
+
+            let feishu_client = Arc::new(FeishuClient::new(app_id, app_secret));
+
+            let state = AppState {
+                db: Arc::new(Mutex::new(conn)),
+                feishu_client: Arc::new(RwLock::new(feishu_client)),
+                doc_id: Arc::new(RwLock::new(doc_id)),
+                wiki: Arc::new(RwLock::new(None)),
+            };
+            app.manage(state);
+
             let state = app.state::<AppState>();
             let app_handle = app.handle().clone();
             let db = Arc::clone(&state.db);
             let client_holder = Arc::clone(&state.feishu_client);
             let wiki_holder = Arc::clone(&state.wiki);
             let doc_id = Arc::clone(&state.doc_id);
-            let node_token = wiki_node_token.clone();
 
             tauri::async_runtime::spawn(async move {
                 let client = {
@@ -65,7 +60,7 @@ pub fn run() {
                     Arc::clone(&*guard)
                 };
 
-                let wiki = if let Some(ref token) = node_token {
+                let wiki = if let Some(ref token) = wiki_node_token {
                     match sync::init_wiki(&client, token).await {
                         Ok(cfg) => {
                             eprintln!("wiki init succeeded");
@@ -100,6 +95,35 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn resolve_db_path_for_app(
+    app: &tauri::App,
+    env_path: Option<&Path>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let configured_db_path = env::var("FLASHIDEA_DB_PATH").ok();
+
+    #[cfg(mobile)]
+    let db_path = {
+        let data_dir = app.path().app_data_dir()?;
+        fs::create_dir_all(&data_dir)?;
+        configured_db_path
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| data_dir.join(s))
+            .unwrap_or_else(|| data_dir.join("flashidea.sqlite"))
+    };
+
+    #[cfg(not(mobile))]
+    let db_path = {
+        let _ = app;
+        let path = resolve_db_path(configured_db_path.as_deref(), env_path)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        path
+    };
+
+    Ok(db_path)
 }
 
 fn load_credentials(conn: &Connection) -> (String, String, Option<String>) {
