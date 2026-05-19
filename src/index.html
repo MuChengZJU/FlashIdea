@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FlashIdea</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="message-panel" aria-label="消息列表">
+        <ol id="message-list" class="message-list"></ol>
+        <div id="empty-state" class="empty-state">有想法？打下来 ↓</div>
+      </main>
+
+      <form id="composer" class="composer" autocomplete="off">
+        <label class="sr-only" for="message-input">输入消息</label>
+        <textarea
+          id="message-input"
+          class="message-input"
+          name="message"
+          rows="1"
+          placeholder="闪念..."
+          enterkeyhint="send"
+          autofocus
+        ></textarea>
+        <button id="send-button" class="send-button" type="submit" aria-label="发送">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 19.4l1.2-4.8L12 12 5.6 9.4 4.4 4.6 20.6 12z"/></svg>
+        </button>
+      </form>
+    </div>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>

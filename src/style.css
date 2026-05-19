@@ -1,0 +1,264 @@
+:root {
+  color-scheme: light dark;
+  --app-bg: #fafaf6;
+  --bar-bg: rgba(250, 250, 246, 0.92);
+  --bar-border: rgba(26, 23, 8, 0.08);
+  --text: #1a1708;
+  --muted: #7a7060;
+  --bubble-bg: #fff0d4;
+  --bubble-text: #1a1708;
+  --bubble-meta: rgba(26, 23, 8, 0.52);
+  --input-bg: #ffffff;
+  --input-border: rgba(26, 23, 8, 0.12);
+  --button-bg: #e8930c;
+  --button-text: #ffffff;
+  --danger: #c4320a;
+  --shadow: 0 6px 20px rgba(26, 23, 8, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.4;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100dvh;
+  min-height: 100vh;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--app-bg);
+}
+
+.message-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.message-list {
+  height: 100%;
+  margin: 0;
+  padding: calc(14px + env(safe-area-inset-top)) 12px 22px;
+  overflow-y: auto;
+  list-style: none;
+  scroll-behavior: smooth;
+}
+
+.message-item {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 12px;
+}
+
+.message-bubble {
+  max-width: min(76%, 480px);
+  padding: 10px 14px 7px;
+  color: var(--bubble-text);
+  background: var(--bubble-bg);
+  border-radius: 16px 4px 16px 16px;
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+  animation: bubble-in 120ms ease-out;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 5px;
+  color: var(--bubble-meta);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.status-button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+.status-button[data-status="failed"] {
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.status-button:disabled {
+  cursor: default;
+}
+
+.status-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+.status-icon--syncing {
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.status-button:not(:disabled):focus-visible,
+.send-button:focus-visible,
+.message-input:focus-visible {
+  outline: 2px solid rgba(232, 147, 12, 0.4);
+  outline-offset: 2px;
+}
+
+.empty-state {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  display: none;
+  width: min(82%, 320px);
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.message-list:empty + .empty-state {
+  display: block;
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: var(--bar-bg);
+  border-top: 1px solid var(--bar-border);
+  backdrop-filter: blur(16px);
+}
+
+.message-input {
+  width: 100%;
+  max-height: 128px;
+  min-height: 44px;
+  padding: 11px 13px;
+  resize: none;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 22px;
+  transition: border-color 120ms;
+}
+
+.message-input:focus {
+  border-color: var(--button-bg);
+}
+
+.send-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--button-text);
+  background: var(--button-bg);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+.send-button:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.send-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.send-button svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .message-bubble {
+    max-width: 82%;
+  }
+
+  .composer {
+    gap: 8px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #141210;
+    --bar-bg: rgba(20, 18, 16, 0.92);
+    --bar-border: rgba(255, 245, 220, 0.08);
+    --text: #f5efe0;
+    --muted: #9a8e7a;
+    --bubble-bg: #3a2e14;
+    --bubble-text: #f5efe0;
+    --bubble-meta: rgba(245, 239, 224, 0.58);
+    --input-bg: #1e1b16;
+    --input-border: rgba(255, 245, 220, 0.1);
+    --button-bg: #ffba33;
+    --button-text: #1a1708;
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+}

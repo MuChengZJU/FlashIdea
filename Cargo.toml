@@ -1,0 +1,4 @@
+[workspace]
+members = ["crates/feishu-client", "src-tauri"]
+resolver = "2"
+

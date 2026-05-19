@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FlashIdea",
+  "version": "0.1.0",
+  "identifier": "com.flashidea.app",
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../src"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "FlashIdea",
+        "width": 400,
+        "height": 700
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}
+
