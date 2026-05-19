@@ -8,7 +8,7 @@ use feishu_client::{FeishuClient, FeishuError};
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use tokio::time::sleep;
+use tokio::{sync::RwLock, time::sleep};
 
 use crate::db::{self, Message};
 
@@ -188,13 +188,26 @@ async fn resolve_doc_id(
 }
 
 pub async fn sync_message(
-    feishu_client: Arc<FeishuClient>,
+    feishu_client: Arc<RwLock<Arc<FeishuClient>>>,
     db: Arc<Mutex<Connection>>,
-    wiki: Option<Arc<WikiConfig>>,
-    fallback_doc_id: String,
+    wiki: Arc<RwLock<Option<Arc<WikiConfig>>>>,
+    fallback_doc_id: Arc<RwLock<String>>,
     message: Message,
     app_handle: AppHandle,
 ) {
+    let feishu_client = {
+        let guard = feishu_client.read().await;
+        Arc::clone(&*guard)
+    };
+    let wiki = {
+        let guard = wiki.read().await;
+        guard.clone()
+    };
+    let fallback_doc_id = {
+        let guard = fallback_doc_id.read().await;
+        guard.clone()
+    };
+
     let doc_id = if let Some(ref wiki) = wiki {
         match resolve_doc_id(&feishu_client, &db, wiki, &message).await {
             Ok(id) => id,
@@ -286,10 +299,10 @@ pub async fn sync_message(
 }
 
 pub async fn sync_all_queued(
-    feishu_client: Arc<FeishuClient>,
+    feishu_client: Arc<RwLock<Arc<FeishuClient>>>,
     db: Arc<Mutex<Connection>>,
-    wiki: Option<Arc<WikiConfig>>,
-    fallback_doc_id: String,
+    wiki: Arc<RwLock<Option<Arc<WikiConfig>>>>,
+    fallback_doc_id: Arc<RwLock<String>>,
     app_handle: AppHandle,
 ) {
     let messages = if let Ok(conn) = db.lock() {
@@ -302,8 +315,8 @@ pub async fn sync_all_queued(
         sync_message(
             Arc::clone(&feishu_client),
             Arc::clone(&db),
-            wiki.clone(),
-            fallback_doc_id.clone(),
+            Arc::clone(&wiki),
+            Arc::clone(&fallback_doc_id),
             message,
             app_handle.clone(),
         )

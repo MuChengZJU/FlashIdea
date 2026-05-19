@@ -7,8 +7,13 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <div id="app-shell" class="app-shell">
       <main class="message-panel" aria-label="消息列表">
+        <button id="open-settings" class="settings-entry" type="button" aria-label="设置" title="设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2.6-1.5L14 2.4h-4l-.4 2.6A7 7 0 0 0 7 6.5l-2.4-1-2 3.5 2 1.5A8.4 8.4 0 0 0 4.5 12c0 .5 0 1 .1 1.5l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6A7 7 0 0 0 17 17.5l2.4 1 2-3.5-2-1.5ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/>
+          </svg>
+        </button>
         <ol id="message-list" class="message-list"></ol>
         <div id="empty-state" class="empty-state">有想法？打下来 ↓</div>
       </main>
@@ -28,6 +33,35 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 19.4l1.2-4.8L12 12 5.6 9.4 4.4 4.6 20.6 12z"/></svg>
         </button>
       </form>
+    </div>
+
+    <div id="settings-page" class="settings-page" style="display:none">
+      <div class="settings-panel">
+        <div class="settings-header">
+          <button id="settings-back" class="settings-back" type="button">← 返回</button>
+          <h2>飞书配置</h2>
+        </div>
+        <form id="settings-form" class="settings-form" autocomplete="off">
+          <label>
+            <span>App ID</span>
+            <input type="text" id="cfg-app-id" placeholder="cli_xxxxxxxxxx" autocomplete="off" />
+          </label>
+          <label>
+            <span>App Secret</span>
+            <input type="password" id="cfg-app-secret" placeholder="输入 App Secret" autocomplete="off" />
+          </label>
+          <label>
+            <span>知识库节点 Token</span>
+            <input type="text" id="cfg-wiki-token" placeholder="从飞书知识库 URL 中提取（可选）" autocomplete="off" />
+          </label>
+          <p id="settings-hint" class="settings-hint"></p>
+          <div class="settings-actions">
+            <button type="button" id="btn-test" class="button-secondary">测试连接</button>
+            <button type="submit" id="btn-save" class="button-primary">保存</button>
+          </div>
+          <div id="settings-status" class="settings-status"></div>
+        </form>
+      </div>
     </div>
 
     <script src="./app.js" defer></script>

@@ -7,7 +7,9 @@ use std::{
 
 use commands::AppState;
 use feishu_client::FeishuClient;
+use rusqlite::Connection;
 use tauri::Manager;
+use tokio::sync::RwLock;
 
 mod commands;
 mod db;
@@ -24,27 +26,26 @@ pub fn run() {
         fs::create_dir_all(parent).expect("failed to create sqlite database directory");
     }
     let db_path = db_path.to_string_lossy().into_owned();
-    let app_id = env::var("FEISHU_APP_ID").unwrap_or_default();
-    let app_secret = env::var("FEISHU_APP_SECRET").unwrap_or_default();
     let doc_id = env::var("FEISHU_DOC_ID").unwrap_or_default();
-    let wiki_node_token = env::var("FEISHU_WIKI_NODE_TOKEN")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+    let conn = db::init_db(&db_path).expect("failed to initialize sqlite database");
+    let (app_id, app_secret, wiki_node_token) = load_credentials(&conn);
 
-    eprintln!("FEISHU_APP_ID set: {}", !app_id.trim().is_empty());
+    eprintln!(
+        "FEISHU_APP_ID prefix: {}",
+        app_id.chars().take(6).collect::<String>()
+    );
     eprintln!(
         "FEISHU_WIKI_NODE_TOKEN set: {}",
         wiki_node_token.is_some()
     );
 
-    let conn = db::init_db(&db_path).expect("failed to initialize sqlite database");
     let feishu_client = Arc::new(FeishuClient::new(app_id, app_secret));
 
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
-        feishu_client: feishu_client.clone(),
-        doc_id: doc_id.clone(),
-        wiki: Arc::new(Mutex::new(None)),
+        feishu_client: Arc::new(RwLock::new(feishu_client)),
+        doc_id: Arc::new(RwLock::new(doc_id)),
+        wiki: Arc::new(RwLock::new(None)),
     };
 
     tauri::Builder::default()
@@ -53,12 +54,17 @@ pub fn run() {
             let state = app.state::<AppState>();
             let app_handle = app.handle().clone();
             let db = Arc::clone(&state.db);
-            let client = Arc::clone(&state.feishu_client);
+            let client_holder = Arc::clone(&state.feishu_client);
             let wiki_holder = Arc::clone(&state.wiki);
-            let doc_id = state.doc_id.clone();
+            let doc_id = Arc::clone(&state.doc_id);
             let node_token = wiki_node_token.clone();
 
             tauri::async_runtime::spawn(async move {
+                let client = {
+                    let guard = client_holder.read().await;
+                    Arc::clone(&*guard)
+                };
+
                 let wiki = if let Some(ref token) = node_token {
                     match sync::init_wiki(&client, token).await {
                         Ok(cfg) => {
@@ -75,23 +81,44 @@ pub fn run() {
                     None
                 };
 
-                if let Some(ref w) = wiki {
-                    if let Ok(mut guard) = wiki_holder.lock() {
-                        *guard = Some(Arc::clone(w));
-                    }
+                {
+                    let mut guard = wiki_holder.write().await;
+                    *guard = wiki;
                 }
 
-                sync::sync_all_queued(client, db, wiki, doc_id, app_handle).await;
+                sync::sync_all_queued(client_holder, db, wiki_holder, doc_id, app_handle).await;
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::send_message,
             commands::get_messages,
-            commands::retry_message
+            commands::retry_message,
+            commands::get_config,
+            commands::save_config,
+            commands::test_connection
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn load_credentials(conn: &Connection) -> (String, String, Option<String>) {
+    let app_id = env::var("FEISHU_APP_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| db::get_setting(conn, "feishu_app_id").ok().flatten())
+        .unwrap_or_default();
+    let app_secret = env::var("FEISHU_APP_SECRET")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| db::get_setting(conn, "feishu_app_secret").ok().flatten())
+        .unwrap_or_default();
+    let wiki_token = env::var("FEISHU_WIKI_NODE_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| db::get_setting(conn, "feishu_wiki_node_token").ok().flatten());
+
+    (app_id, app_secret, wiki_token)
 }
 
 fn load_env_file() -> Option<PathBuf> {

@@ -12,7 +12,10 @@
   --input-border: rgba(26, 23, 8, 0.12);
   --button-bg: #e8930c;
   --button-text: #ffffff;
+  --bg: var(--app-bg);
+  --btn: var(--button-bg);
   --danger: #c4320a;
+  --success: #14843c;
   --shadow: 0 6px 20px rgba(26, 23, 8, 0.06);
 }
 
@@ -34,6 +37,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -51,6 +55,31 @@ textarea {
 .message-panel {
   position: relative;
   overflow: hidden;
+}
+
+.settings-entry {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--muted);
+  background: var(--bar-bg);
+  border: 1px solid var(--bar-border);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+}
+
+.settings-entry svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 .message-list {
@@ -143,6 +172,11 @@ textarea {
 }
 
 .status-button:not(:disabled):focus-visible,
+.settings-entry:focus-visible,
+.settings-back:focus-visible,
+.button-primary:focus-visible,
+.button-secondary:focus-visible,
+.settings-form input:focus-visible,
 .send-button:focus-visible,
 .message-input:focus-visible {
   outline: 2px solid rgba(232, 147, 12, 0.4);
@@ -223,6 +257,135 @@ textarea {
   fill: currentColor;
 }
 
+.settings-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: calc(24px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.settings-panel {
+  width: min(100%, 400px);
+}
+
+.settings-header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.settings-back {
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--bar-border);
+  border-radius: 18px;
+  cursor: pointer;
+}
+
+.settings-form {
+  display: grid;
+  gap: 15px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-form label span {
+  padding-left: 2px;
+}
+
+.settings-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 14px;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+
+.settings-form input:focus {
+  border-color: var(--btn);
+  box-shadow: 0 0 0 3px rgba(232, 147, 12, 0.14);
+}
+
+.settings-form input[readonly] {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--input-bg) 82%, var(--bar-border));
+}
+
+.settings-hint {
+  min-height: 18px;
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.button-primary,
+.button-secondary {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  cursor: pointer;
+}
+
+.button-primary {
+  color: var(--button-text);
+  background: var(--btn);
+  border: 0;
+}
+
+.button-secondary {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--input-border);
+}
+
+.button-primary:disabled,
+.button-secondary:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.settings-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.settings-status--success {
+  color: var(--success);
+}
+
+.settings-status--error {
+  color: var(--danger);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -259,6 +422,7 @@ textarea {
     --input-border: rgba(255, 245, 220, 0.1);
     --button-bg: #ffba33;
     --button-text: #1a1708;
+    --success: #5bd17e;
     --shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
   }
 }

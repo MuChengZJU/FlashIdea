@@ -1,10 +1,24 @@
 (function () {
+  const appShell = document.getElementById("app-shell");
+  const settingsPage = document.getElementById("settings-page");
   const messageList = document.getElementById("message-list");
   const composer = document.getElementById("composer");
   const input = document.getElementById("message-input");
   const sendButton = document.getElementById("send-button");
+  const openSettings = document.getElementById("open-settings");
+  const settingsBack = document.getElementById("settings-back");
+  const settingsForm = document.getElementById("settings-form");
+  const cfgAppId = document.getElementById("cfg-app-id");
+  const cfgAppSecret = document.getElementById("cfg-app-secret");
+  const cfgWikiToken = document.getElementById("cfg-wiki-token");
+  const settingsHint = document.getElementById("settings-hint");
+  const settingsStatus = document.getElementById("settings-status");
+  const testButton = document.getElementById("btn-test");
+  const saveButton = document.getElementById("btn-save");
 
   const messages = new Map();
+  let currentConfig = null;
+  let historyLoaded = false;
   const tauri = window.__TAURI__;
   const invoke = tauri && tauri.core && tauri.core.invoke;
   const listen = tauri && tauri.event && tauri.event.listen;
@@ -59,6 +73,72 @@
       element.textContent = textContent;
     }
     return element;
+  }
+
+  function showChat() {
+    appShell.style.display = "";
+    settingsPage.style.display = "none";
+    if (!historyLoaded) {
+      loadHistory();
+      historyLoaded = true;
+    }
+    input.focus();
+  }
+
+  function showSettings() {
+    appShell.style.display = "none";
+    settingsPage.style.display = "grid";
+    cfgAppId.focus();
+  }
+
+  function setSettingsStatus(text, kind) {
+    settingsStatus.textContent = text || "";
+    settingsStatus.classList.remove("settings-status--success", "settings-status--error");
+    if (kind) {
+      settingsStatus.classList.add("settings-status--" + kind);
+    }
+  }
+
+  function fillSettingsForm(config) {
+    currentConfig = config || {};
+    cfgAppId.value = currentConfig.app_id || "";
+    cfgAppSecret.value = "";
+    cfgAppSecret.placeholder = currentConfig.app_secret_hint || "输入 App Secret";
+    cfgWikiToken.value = currentConfig.wiki_node_token || "";
+
+    const readonly = Boolean(currentConfig.from_env);
+    [cfgAppId, cfgAppSecret, cfgWikiToken].forEach(function (field) {
+      field.readOnly = readonly;
+    });
+    saveButton.disabled = readonly;
+    settingsHint.textContent = readonly ? "当前配置来自 .env 文件，请在文件中修改。" : "";
+  }
+
+  async function loadConfig() {
+    if (!isTauriReady()) {
+      return {
+        configured: true,
+        app_id: "",
+        app_secret_hint: "",
+        wiki_node_token: "",
+        from_env: false,
+      };
+    }
+
+    return invoke("get_config");
+  }
+
+  async function openSettingsPage() {
+    try {
+      const config = await loadConfig();
+      fillSettingsForm(config);
+      setSettingsStatus("", null);
+      showSettings();
+    } catch (error) {
+      console.warn("get_config failed", error);
+      setSettingsStatus(String(error), "error");
+      showSettings();
+    }
   }
 
   function renderMessage(message) {
@@ -214,6 +294,57 @@
     }
   }
 
+  async function saveSettings() {
+    if (!isTauriReady()) {
+      showChat();
+      return;
+    }
+
+    saveButton.disabled = true;
+    testButton.disabled = true;
+    setSettingsStatus("正在保存...", null);
+    try {
+      const config = await invoke("save_config", {
+        appId: cfgAppId.value,
+        appSecret: cfgAppSecret.value,
+        wikiNodeToken: cfgWikiToken.value,
+      });
+      fillSettingsForm(config);
+      setSettingsStatus("已保存", "success");
+      showChat();
+    } catch (error) {
+      console.warn("save_config failed", error);
+      setSettingsStatus(String(error), "error");
+    } finally {
+      saveButton.disabled = Boolean(currentConfig && currentConfig.from_env);
+      testButton.disabled = false;
+    }
+  }
+
+  async function testSettings() {
+    if (!isTauriReady()) {
+      setSettingsStatus("浏览器预览模式无法测试连接", "error");
+      return;
+    }
+
+    testButton.disabled = true;
+    setSettingsStatus("正在测试连接...", null);
+    try {
+      const result = await invoke("test_connection");
+      if (result && result.success) {
+        setSettingsStatus("连接成功", "success");
+      } else {
+        const error = result && result.error ? result.error : "连接失败";
+        setSettingsStatus(error, "error");
+      }
+    } catch (error) {
+      console.warn("test_connection failed", error);
+      setSettingsStatus(String(error), "error");
+    } finally {
+      testButton.disabled = false;
+    }
+  }
+
   composer.addEventListener("submit", function (event) {
     event.preventDefault();
     const text = input.value.trim();
@@ -226,6 +357,23 @@
     sendMessage(text);
   });
 
+  openSettings.addEventListener("click", openSettingsPage);
+
+  settingsBack.addEventListener("click", function () {
+    if (currentConfig && currentConfig.configured) {
+      showChat();
+    } else {
+      setSettingsStatus("请先保存有效配置", "error");
+    }
+  });
+
+  settingsForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    saveSettings();
+  });
+
+  testButton.addEventListener("click", testSettings);
+
   input.addEventListener("input", resizeInput);
   input.addEventListener("keydown", function (event) {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -236,6 +384,18 @@
 
   resizeInput();
   bindSyncEvents();
-  loadHistory();
-  input.focus();
+  loadConfig()
+    .then(function (config) {
+      fillSettingsForm(config);
+      if (config && config.configured) {
+        showChat();
+      } else {
+        showSettings();
+      }
+    })
+    .catch(function (error) {
+      console.warn("initial get_config failed", error);
+      showSettings();
+      setSettingsStatus(String(error), "error");
+    });
 })();
