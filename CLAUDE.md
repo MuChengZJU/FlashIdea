@@ -86,6 +86,10 @@ flashidea/
 - Android 用 `adb install -r` 覆盖安装，不要卸载重装（会丢 SQLite 数据）
 - 不要自动 push，等确认后再推
 
+## 踩坑经验
+
+遇到构建、部署、CI/CD 问题时，先读 `docs/devlog.md`，里面有历次踩坑的症状和解决方案。
+
 ## 开发计划
 
 详见 `docs/dev-plan.md`。4 个任务，任务 1 完成后 2/3/4 可并行。
