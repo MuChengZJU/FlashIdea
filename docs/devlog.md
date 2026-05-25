@@ -1,5 +1,21 @@
 # FlashIdea 开发日志
 
+## v0.2.2 — 2026-05-25
+
+### 新增
+
+- **项目 Logo**：胶囊闪电 + 声波图标，README 顶部展示
+- **应用图标替换**：用 logo 裁剪生成全平台图标（Mac .icns / Windows .ico / Android mipmap / iOS），替换 Tauri 默认图标
+- **GitHub Actions CI/CD**：推送 `v*` tag 自动构建 Mac DMG + Android APK，发布到 GitHub Release
+- **发版流程文档**：CLAUDE.md 写入标准发版操作步骤
+
+### 发版方式变更
+
+之前：本地手动构建 → 手动上传 Release
+现在：`git tag vx.y.z && git push --tags` → CI 自动构建发布
+
+---
+
 ## v0.2.1 — 2026-05-25
 
 ### 修复
