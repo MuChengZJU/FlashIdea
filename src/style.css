@@ -26,6 +26,7 @@
 html,
 body {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -45,8 +46,7 @@ textarea {
 .app-shell {
   display: grid;
   grid-template-rows: 1fr auto;
-  height: 100dvh;
-  min-height: 100vh;
+  height: var(--app-height, 100dvh);
   max-width: 720px;
   margin: 0 auto;
   background: var(--app-bg);

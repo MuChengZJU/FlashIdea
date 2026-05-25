@@ -19,6 +19,7 @@
   const messages = new Map();
   let currentConfig = null;
   let historyLoaded = false;
+  let messageListWasAtBottom = true;
   const tauri = window.__TAURI__;
   const invoke = tauri && tauri.core && tauri.core.invoke;
   const listen = tauri && tauri.event && tauri.event.listen;
@@ -206,6 +207,27 @@
     });
   }
 
+  function isMessageListAtBottom() {
+    return messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 4;
+  }
+
+  function updateAppHeight() {
+    var shouldScrollToBottom = messageListWasAtBottom;
+    document.documentElement.style.setProperty("--app-height", window.visualViewport.height + "px");
+    if (shouldScrollToBottom) {
+      scrollToBottom();
+    }
+  }
+
+  function bindViewportResize() {
+    if (!window.visualViewport) {
+      return;
+    }
+
+    updateAppHeight();
+    window.visualViewport.addEventListener("resize", updateAppHeight);
+  }
+
   function resizeInput() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 128) + "px";
@@ -234,6 +256,8 @@
     try {
       const history = await invoke("get_messages", { limit: 50 });
       if (Array.isArray(history)) {
+        messages.clear();
+        messageList.innerHTML = "";
         history.forEach(renderMessage);
         scrollToBottom();
       }
@@ -393,6 +417,10 @@
 
   testButton.addEventListener("click", testSettings);
 
+  messageList.addEventListener("scroll", function () {
+    messageListWasAtBottom = isMessageListAtBottom();
+  });
+
   input.addEventListener("input", resizeInput);
   input.addEventListener("keydown", function (event) {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -401,11 +429,21 @@
     }
   });
 
+  var loading = document.getElementById("loading");
+  function hideLoading() {
+    if (loading) {
+      loading.remove();
+      loading = null;
+    }
+  }
+
   resizeInput();
+  bindViewportResize();
   bindSyncEvents();
   loadConfig()
     .then(function (config) {
       fillSettingsForm(config);
+      hideLoading();
       if (config && config.configured) {
         showChat();
       } else {
@@ -414,6 +452,7 @@
     })
     .catch(function (error) {
       console.warn("initial get_config failed", error);
+      hideLoading();
       showSettings();
       setSettingsStatus(String(error), "error");
     });
