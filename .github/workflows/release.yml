@@ -74,8 +74,20 @@ jobs:
       - name: Init Android project
         run: cargo tauri android init
 
-      - name: Build Android APK
-        run: cargo tauri android build --apk --debug --target aarch64
+      - name: Generate signing key
+        run: |
+          keytool -genkey -v -keystore release.keystore \
+            -alias flashidea -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass flashidea -keypass flashidea \
+            -dname "CN=FlashIdea, O=FlashIdea, L=Unknown, ST=Unknown, C=CN"
+
+      - name: Build Android APK (release)
+        run: cargo tauri android build --apk --target aarch64
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/release.keystore
+          SIGNING_STORE_PASSWORD: flashidea
+          SIGNING_KEY_ALIAS: flashidea
+          SIGNING_KEY_PASSWORD: flashidea
 
       - name: Rename APK
         run: |
