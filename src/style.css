@@ -386,6 +386,35 @@ textarea {
   color: var(--danger);
 }
 
+.settings-export {
+  margin-top: 8px;
+  text-align: center;
+}
+
+.button-link {
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.button-link:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.message-error {
+  display: none;
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

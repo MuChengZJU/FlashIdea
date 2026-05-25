@@ -21,6 +21,8 @@ const DAY_BOUNDARY: NaiveTime = match NaiveTime::from_hms_opt(6, 0, 0) {
 struct SyncStatusChanged {
     id: String,
     status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -389,30 +391,33 @@ pub async fn sync_message(
         match resolve_doc_id(&feishu_client, &db, wiki, &message).await {
             Ok(id) => id,
             Err(err) => {
+                let reason = user_friendly_error(&err);
                 eprintln!(
                     "sync_message: message_id={} resolve_doc_id failed: {:?}",
                     message.id, err
                 );
                 if fallback_doc_id.trim().is_empty() {
-                    eprintln!(
-                        "sync_message: message_id={} marking failed because resolve_doc_id failed and fallback_doc_id is empty; append_text will not be called",
-                        message.id
-                    );
+                    let reason = format!("文档定位失败: {reason}");
                     if let Ok(conn) = db.lock() {
-                        let _ = db::update_sync_status(&conn, &message.id, "failed", None);
+                        let _ = db::update_sync_status(&conn, &message.id, "failed", None, Some(&reason));
+                        let _ = db::insert_log(&conn, "error", "sync", &format!("msg={} {reason}", message.id));
                     }
-                    emit_status(&app_handle, &message.id, "failed");
+                    emit_status(&app_handle, &message.id, "failed", Some(&reason));
                     return;
                 }
-                eprintln!(
-                    "sync_message: message_id={} using fallback_doc_id after resolve_doc_id failure",
-                    message.id
-                );
                 fallback_doc_id.clone()
             }
         }
-    } else {
+    } else if !fallback_doc_id.trim().is_empty() {
         fallback_doc_id.clone()
+    } else {
+        let reason = "知识库未配置，请在设置中填写知识库节点 Token";
+        if let Ok(conn) = db.lock() {
+            let _ = db::update_sync_status(&conn, &message.id, "failed", None, Some(reason));
+            let _ = db::insert_log(&conn, "error", "sync", &format!("msg={} {reason}", message.id));
+        }
+        emit_status(&app_handle, &message.id, "failed", Some(reason));
+        return;
     };
 
     if let Ok(conn) = db.lock() {
@@ -430,9 +435,9 @@ pub async fn sync_message(
             Ok(()) => {
                 let synced_at = Utc::now().to_rfc3339();
                 if let Ok(conn) = db.lock() {
-                    let _ = db::update_sync_status(&conn, &message.id, "synced", Some(&synced_at));
+                    let _ = db::update_sync_status(&conn, &message.id, "synced", Some(&synced_at), None);
                 }
-                emit_status(&app_handle, &message.id, "synced");
+                emit_status(&app_handle, &message.id, "synced", None);
                 return;
             }
             Err(FeishuError::RateLimited) if !rate_limited_once => {
@@ -447,28 +452,32 @@ pub async fn sync_message(
                 };
 
                 if retry_count >= 5 {
+                    let reason = user_friendly_error(&err);
                     eprintln!(
-                        "sync_message: message_id={} marking failed after append_text network error with retry_count={}: {:?}",
-                        message.id, retry_count, err
+                        "sync_message: message_id={} failed after 5 retries: {:?}",
+                        message.id, err
                     );
                     if let Ok(conn) = db.lock() {
-                        let _ = db::update_sync_status(&conn, &message.id, "failed", None);
+                        let _ = db::update_sync_status(&conn, &message.id, "failed", None, Some(&reason));
+                        let _ = db::insert_log(&conn, "error", "sync", &format!("msg={} {reason} (retries=5)", message.id));
                     }
-                    emit_status(&app_handle, &message.id, "failed");
+                    emit_status(&app_handle, &message.id, "failed", Some(&reason));
                 }
                 return;
             }
-            Err(err @ FeishuError::RateLimited)
-            | Err(err @ FeishuError::AuthError(_))
-            | Err(err @ FeishuError::ApiError { .. }) => {
+            Err(ref err @ FeishuError::RateLimited)
+            | Err(ref err @ FeishuError::AuthError(_))
+            | Err(ref err @ FeishuError::ApiError { .. }) => {
+                let reason = user_friendly_error(err);
                 eprintln!(
-                    "sync_message: message_id={} marking failed after append_text error: {:?}",
+                    "sync_message: message_id={} failed: {:?}",
                     message.id, err
                 );
                 if let Ok(conn) = db.lock() {
-                    let _ = db::update_sync_status(&conn, &message.id, "failed", None);
+                    let _ = db::update_sync_status(&conn, &message.id, "failed", None, Some(&reason));
+                    let _ = db::insert_log(&conn, "error", "sync", &format!("msg={} {reason}", message.id));
                 }
-                emit_status(&app_handle, &message.id, "failed");
+                emit_status(&app_handle, &message.id, "failed", Some(&reason));
                 return;
             }
         }
@@ -509,14 +518,24 @@ fn format_message_content(message: &Message) -> String {
     format!("[{}] {}", time, message.text)
 }
 
-fn emit_status(app_handle: &AppHandle, id: &str, status: &str) {
+fn emit_status(app_handle: &AppHandle, id: &str, status: &str, error: Option<&str>) {
     let _ = app_handle.emit(
         "sync_status_changed",
         SyncStatusChanged {
             id: id.to_string(),
             status: status.to_string(),
+            error: error.map(String::from),
         },
     );
+}
+
+fn user_friendly_error(err: &FeishuError) -> String {
+    match err {
+        FeishuError::AuthError(_) => "认证失败，请检查 App ID 和 App Secret".to_string(),
+        FeishuError::NetworkError(_) => "网络连接失败，请检查网络".to_string(),
+        FeishuError::RateLimited => "飞书接口限流，请稍后重试".to_string(),
+        FeishuError::ApiError { code, msg } => format!("飞书接口错误 {code}: {msg}"),
+    }
 }
 
 #[cfg(test)]

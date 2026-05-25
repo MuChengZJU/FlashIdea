@@ -49,6 +49,7 @@
       text: String(raw.text || ""),
       created_at: raw.created_at || new Date().toISOString(),
       sync_status: raw.sync_status || raw.status || "queued",
+      error_reason: raw.error_reason || null,
     };
   }
 
@@ -146,7 +147,7 @@
     const normalized = normalizeMessage(message);
     const existing = messages.get(normalized.id);
     if (existing) {
-      updateMessageStatus(normalized.id, normalized.sync_status);
+      updateMessageStatus(normalized.id, normalized.sync_status, normalized.error_reason);
       return;
     }
 
@@ -155,6 +156,7 @@
 
     const bubble = createElement("article", "message-bubble");
     const text = createElement("div", "message-text", normalized.text);
+    const errorLine = createElement("div", "message-error");
     const meta = createElement("div", "message-meta");
     const time = createElement("time", "message-time", formatTime(normalized.created_at));
     time.dateTime = normalized.created_at;
@@ -168,7 +170,7 @@
     });
 
     meta.append(time, statusButton);
-    bubble.append(text, meta);
+    bubble.append(text, errorLine, meta);
     item.append(bubble);
     messageList.append(item);
 
@@ -176,9 +178,11 @@
       data: normalized,
       item,
       statusButton,
+      errorLine,
     });
 
     setStatus(statusButton, normalized.sync_status);
+    setErrorText(errorLine, normalized.sync_status, normalized.error_reason);
     scrollToBottom();
   }
 
@@ -191,14 +195,26 @@
     button.disabled = status !== "failed";
   }
 
-  function updateMessageStatus(id, status) {
+  function setErrorText(errorLine, status, reason) {
+    if (status === "failed" && reason) {
+      errorLine.textContent = reason;
+      errorLine.style.display = "";
+    } else {
+      errorLine.textContent = "";
+      errorLine.style.display = "none";
+    }
+  }
+
+  function updateMessageStatus(id, status, errorReason) {
     const record = messages.get(String(id));
     if (!record) {
       return;
     }
 
     record.data.sync_status = status;
+    record.data.error_reason = errorReason || null;
     setStatus(record.statusButton, status);
+    setErrorText(record.errorLine, status, errorReason);
   }
 
   function scrollToBottom() {
@@ -326,7 +342,7 @@
       await listen("sync_status_changed", function (event) {
         const payload = event && event.payload ? event.payload : {};
         if (payload.id && payload.status) {
-          updateMessageStatus(payload.id, payload.status);
+          updateMessageStatus(payload.id, payload.status, payload.error);
         }
       });
       await listen("messages_updated", function () {
@@ -435,6 +451,37 @@
       loading.remove();
       loading = null;
     }
+  }
+
+  var exportButton = document.getElementById("btn-export-logs");
+
+  async function exportLogs() {
+    if (!isTauriReady()) {
+      setSettingsStatus("浏览器预览模式无法导出", "error");
+      return;
+    }
+
+    exportButton.disabled = true;
+    setSettingsStatus("正在生成日志...", null);
+    try {
+      var text = await invoke("export_logs");
+      try {
+        await navigator.clipboard.writeText(text);
+        setSettingsStatus("日志已复制到剪贴板，可粘贴发送", "success");
+      } catch (_) {
+        prompt("复制以下日志内容：", text);
+        setSettingsStatus("请手动复制日志内容", null);
+      }
+    } catch (error) {
+      console.warn("export_logs failed", error);
+      setSettingsStatus(String(error), "error");
+    } finally {
+      exportButton.disabled = false;
+    }
+  }
+
+  if (exportButton) {
+    exportButton.addEventListener("click", exportLogs);
   }
 
   resizeInput();

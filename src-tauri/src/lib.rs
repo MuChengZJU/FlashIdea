@@ -48,6 +48,9 @@ pub fn run() {
             app.manage(state);
 
             let state = app.state::<AppState>();
+            if let Ok(conn) = state.db.lock() {
+                let _ = db::insert_log(&conn, "info", "app", &format!("启动 v{}", env!("CARGO_PKG_VERSION")));
+            }
             let app_handle = app.handle().clone();
             let db = Arc::clone(&state.db);
             let client_holder = Arc::clone(&state.feishu_client);
@@ -64,15 +67,24 @@ pub fn run() {
                     match sync::init_wiki(&client, token).await {
                         Ok(cfg) => {
                             eprintln!("wiki init succeeded");
+                            if let Ok(conn) = db.lock() {
+                                let _ = db::insert_log(&conn, "info", "app", "wiki 初始化成功");
+                            }
                             Some(Arc::new(cfg))
                         }
                         Err(e) => {
                             eprintln!("wiki init failed: {e}, falling back to single doc");
+                            if let Ok(conn) = db.lock() {
+                                let _ = db::insert_log(&conn, "error", "app", &format!("wiki 初始化失败: {e}"));
+                            }
                             None
                         }
                     }
                 } else {
                     eprintln!("wiki init skipped: FEISHU_WIKI_NODE_TOKEN is not set");
+                    if let Ok(conn) = db.lock() {
+                        let _ = db::insert_log(&conn, "warn", "app", "wiki 未配置，跳过初始化");
+                    }
                     None
                 };
 
@@ -99,7 +111,8 @@ pub fn run() {
             commands::retry_message,
             commands::get_config,
             commands::save_config,
-            commands::test_connection
+            commands::test_connection,
+            commands::export_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

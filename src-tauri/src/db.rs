@@ -1,3 +1,4 @@
+use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,16 @@ pub struct Message {
     pub target_doc_id: Option<String>,
     pub metadata: String,
     pub synced_at: Option<String>,
+    pub error_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppLog {
+    pub id: i64,
+    pub level: String,
+    pub tag: String,
+    pub message: String,
+    pub created_at: String,
 }
 
 pub fn init_db(path: &str) -> Result<Connection> {
@@ -31,8 +42,16 @@ pub fn init_db(path: &str) -> Result<Connection> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS app_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            level TEXT NOT NULL DEFAULT 'info',
+            tag TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         ",
     )?;
+    let _ = conn.execute("ALTER TABLE messages ADD COLUMN error_reason TEXT", []);
     Ok(conn)
 }
 
@@ -86,7 +105,7 @@ pub fn insert_message(
 pub fn get_messages(conn: &Connection, limit: i64) -> Result<Vec<Message>> {
     let mut stmt = conn.prepare(
         "
-        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at
+        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at, error_reason
         FROM messages
         ORDER BY created_at DESC
         LIMIT ?1
@@ -102,7 +121,7 @@ pub fn get_messages(conn: &Connection, limit: i64) -> Result<Vec<Message>> {
 pub fn get_queued_messages(conn: &Connection) -> Result<Vec<Message>> {
     let mut stmt = conn.prepare(
         "
-        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at
+        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at, error_reason
         FROM messages
         WHERE sync_status = 'queued'
         ORDER BY created_at ASC
@@ -117,10 +136,11 @@ pub fn update_sync_status(
     id: &str,
     status: &str,
     synced_at: Option<&str>,
+    error_reason: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE messages SET sync_status = ?1, synced_at = ?2 WHERE id = ?3",
-        params![status, synced_at, id],
+        "UPDATE messages SET sync_status = ?1, synced_at = ?2, error_reason = ?3 WHERE id = ?4",
+        params![status, synced_at, error_reason, id],
     )?;
     Ok(())
 }
@@ -176,7 +196,7 @@ pub fn insert_remote_message(
 pub fn get_message(conn: &Connection, id: &str) -> Result<Option<Message>> {
     let mut stmt = conn.prepare(
         "
-        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at
+        SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at, error_reason
         FROM messages
         WHERE id = ?1
         ",
@@ -195,7 +215,49 @@ fn row_to_message(row: &Row<'_>) -> Result<Message> {
         target_doc_id: row.get(5)?,
         metadata: row.get(6)?,
         synced_at: row.get(7)?,
+        error_reason: row.get(8)?,
     })
+}
+
+pub fn insert_log(conn: &Connection, level: &str, tag: &str, message: &str) -> Result<()> {
+    let now = Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO app_logs (level, tag, message, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![level, tag, message, now],
+    )?;
+    conn.execute(
+        "DELETE FROM app_logs WHERE id NOT IN (SELECT id FROM app_logs ORDER BY id DESC LIMIT 500)",
+        [],
+    )?;
+    Ok(())
+}
+
+pub fn get_logs(conn: &Connection, limit: i64) -> Result<Vec<AppLog>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, level, tag, message, created_at FROM app_logs ORDER BY id DESC LIMIT ?1",
+    )?;
+    let mut logs: Vec<AppLog> = stmt
+        .query_map([limit], |row| {
+            Ok(AppLog {
+                id: row.get(0)?,
+                level: row.get(1)?,
+                tag: row.get(2)?,
+                message: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    logs.reverse();
+    Ok(logs)
+}
+
+pub fn get_failed_messages(conn: &Connection, limit: i64) -> Result<Vec<Message>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, text, created_at, sync_status, retry_count, target_doc_id, metadata, synced_at, error_reason
+         FROM messages WHERE sync_status = 'failed' ORDER BY created_at DESC LIMIT ?1",
+    )?;
+    let messages = stmt.query_map([limit], row_to_message)?.collect::<Result<Vec<_>>>()?;
+    Ok(messages)
 }
 
 #[cfg(test)]
@@ -263,6 +325,7 @@ mod tests {
             "message-1",
             "synced",
             Some("2026-05-18T10:00:10Z"),
+            None,
         )
         .expect("update sync status");
 
@@ -330,7 +393,7 @@ mod tests {
             Some("doc-1"),
         )
         .expect("insert synced message");
-        update_sync_status(&conn, "synced-1", "synced", Some("2026-05-18T10:00:10Z"))
+        update_sync_status(&conn, "synced-1", "synced", Some("2026-05-18T10:00:10Z"), None)
             .expect("mark synced");
 
         let messages = get_queued_messages(&conn).expect("get queued messages");

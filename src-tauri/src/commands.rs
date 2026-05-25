@@ -85,6 +85,7 @@ pub async fn send_message(
         target_doc_id: None,
         metadata: "{}".to_string(),
         synced_at: None,
+        error_reason: None,
     };
 
     tauri::async_runtime::spawn(sync::sync_message(
@@ -264,14 +265,27 @@ pub async fn test_connection(state: State<'_, AppState>) -> Result<TestResult, S
     };
 
     if !wiki_node_token.trim().is_empty() {
-        return match client.get_wiki_node(&wiki_node_token).await {
-            Ok(_) => Ok(TestResult {
-                success: true,
-                token_ok: true,
-                wiki_ok: true,
-                error: None,
-            }),
-            Err(err) => Ok(test_error_result(err, true)),
+        return match sync::init_wiki(&client, &wiki_node_token).await {
+            Ok(cfg) => {
+                let mut guard = state.wiki.write().await;
+                *guard = Some(Arc::new(cfg));
+
+                if let Ok(conn) = state.db.lock() {
+                    let _ = db::insert_log(&conn, "info", "test", "连接测试通过，wiki 已初始化");
+                }
+                Ok(TestResult {
+                    success: true,
+                    token_ok: true,
+                    wiki_ok: true,
+                    error: None,
+                })
+            }
+            Err(err) => {
+                if let Ok(conn) = state.db.lock() {
+                    let _ = db::insert_log(&conn, "error", "test", &format!("连接测试失败: {err}"));
+                }
+                Ok(test_error_result(err, true))
+            }
         };
     }
 
@@ -283,14 +297,82 @@ pub async fn test_connection(state: State<'_, AppState>) -> Result<TestResult, S
         )
         .await
     {
-        Ok(()) | Err(FeishuError::ApiError { .. }) => Ok(TestResult {
-            success: true,
-            token_ok: true,
-            wiki_ok: true,
-            error: None,
-        }),
-        Err(err) => Ok(test_error_result(err, false)),
+        Ok(()) | Err(FeishuError::ApiError { .. }) => {
+            if let Ok(conn) = state.db.lock() {
+                let _ = db::insert_log(&conn, "info", "test", "连接测试通过（无 wiki 配置）");
+            }
+            Ok(TestResult {
+                success: true,
+                token_ok: true,
+                wiki_ok: true,
+                error: None,
+            })
+        }
+        Err(err) => {
+            if let Ok(conn) = state.db.lock() {
+                let _ = db::insert_log(&conn, "error", "test", &format!("连接测试失败: {err}"));
+            }
+            Ok(test_error_result(err, false))
+        }
     }
+}
+
+#[tauri::command]
+pub async fn export_logs(state: State<'_, AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let logs = db::get_logs(&conn, 200).map_err(|e| e.to_string())?;
+    let failed = db::get_failed_messages(&conn, 20).map_err(|e| e.to_string())?;
+
+    let mut out = String::new();
+    out.push_str(&format!("=== Flash Idea 诊断日志 ===\n"));
+    out.push_str(&format!("版本: {}\n", env!("CARGO_PKG_VERSION")));
+    out.push_str(&format!("导出时间: {}\n", chrono::Local::now().to_rfc3339()));
+
+    let (app_id, _, wiki_node_token, from_env) = read_effective_config_from_conn(&conn);
+    let app_id_display = if app_id.is_empty() { "未配置".to_string() } else { app_id_prefix(&app_id) };
+    let wiki_display = if wiki_node_token.is_empty() { "未配置".to_string() } else { format!("{}...", &wiki_node_token[..wiki_node_token.len().min(8)]) };
+    out.push_str(&format!(
+        "配置来源: {} | App ID: {} | Wiki Token: {}\n\n",
+        if from_env { "环境变量" } else { "应用内" },
+        app_id_display,
+        wiki_display,
+    ));
+
+    out.push_str("--- 最近日志 ---\n");
+    if logs.is_empty() {
+        out.push_str("（无日志）\n");
+    }
+    for log in &logs {
+        out.push_str(&format!("[{}] [{}] [{}] {}\n", log.created_at, log.level, log.tag, log.message));
+    }
+
+    if !failed.is_empty() {
+        out.push_str("\n--- 失败消息 ---\n");
+        for msg in &failed {
+            let text_preview: String = msg.text.chars().take(50).collect();
+            out.push_str(&format!(
+                "[{}] \"{}\" → {}\n",
+                msg.created_at,
+                text_preview,
+                msg.error_reason.as_deref().unwrap_or("未知错误"),
+            ));
+        }
+    }
+
+    Ok(out)
+}
+
+fn read_effective_config_from_conn(conn: &Connection) -> (String, String, String, bool) {
+    let app_id = env_setting(APP_ID_ENV)
+        .or_else(|| db::get_setting(conn, APP_ID_KEY).ok().flatten())
+        .unwrap_or_default();
+    let app_secret = env_setting(APP_SECRET_ENV)
+        .or_else(|| db::get_setting(conn, APP_SECRET_KEY).ok().flatten())
+        .unwrap_or_default();
+    let wiki_node_token = env_setting(WIKI_NODE_TOKEN_ENV)
+        .or_else(|| db::get_setting(conn, WIKI_NODE_TOKEN_KEY).ok().flatten())
+        .unwrap_or_default();
+    (app_id, app_secret, wiki_node_token, config_from_env())
 }
 
 fn read_effective_config(state: &State<'_, AppState>) -> Result<(String, String, String, bool), String> {
