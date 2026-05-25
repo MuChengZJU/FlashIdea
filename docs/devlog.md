@@ -1,6 +1,6 @@
 # Flash Idea 开发日志
 
-## v0.2.3 — 2026-05-26
+## v0.2.4 — 2026-05-26
 
 ### 新增
 
@@ -24,6 +24,10 @@
 1. Codex 审阅发现 8 个问题（I1-I8）
 2. 拆分为 3 个并行 worktree（Task A/B/C），每个用 TDD 方式修复
 3. Cherry-pick + 手动合并回 main
+
+---
+
+## v0.2.3 — 2026-05-25
 
 ### 全局重命名 FlashIdea → Flash Idea / flash-idea
 
